@@ -1,0 +1,46 @@
+service: radiator-endpoint
+
+provider:
+  name: aws
+  apiKeys:
+    - radiator
+  runtime: python3.6
+
+  region: eu-west-1
+  iamRoleStatements:
+    - Effect: "Allow"
+      Action:
+        - "logs:*"
+      Resource: "*"
+    - Effect: "Allow"
+      Action:
+        - "cloudwatch:describe*"
+      Resource: "*"
+    - Effect: "Allow"
+      Action:
+        - "codepipeline:list*"
+      Resource: "*"
+    - Effect: "Allow"
+      Action:
+        - "codepipeline:get*"
+      Resource: "*"
+    - Effect: "Allow"
+      Action:
+        - "cloudwatch:GetMetricStatistics"
+      Resource: "*"
+
+functions:
+  status:
+    handler: handler.status
+
+    events:
+      - http:
+          path: status
+          method: get
+          private: true
+plugins:
+  - serverless-python-requirements
+
+package:
+  exclude:
+    - a/** # virtualenv
