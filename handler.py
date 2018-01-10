@@ -1,13 +1,20 @@
 import boto3
 import json
-from datetime import datetime, timedelta
+from datetime import date,datetime, timedelta
+
+def json_serial(obj):
+    """JSON serializer for objects not serializable by default json code"""
+
+    if isinstance(obj, (datetime, date)):
+        return obj.isoformat()
+    raise TypeError ("Type %s not serializable" % type(obj))
 
 # metrics= [{'name': 'RDS CPU Utilization',
 #            'request': {'Namespace':'AWS/RDS',
 #                         'MetricName':'CPUUtilization',
 #                         'StartTime': datetime.utcnow() - timedelta(minutes=10),
 #                         'EndTime': datetime.now() ,
-#                         'Period': 1200,
+#                         'Period': 600,
 #                         'Statistics':['Average'],
 #                         'Unit':'Percent'},
 #            'statistics': 'Average',
@@ -18,11 +25,22 @@ from datetime import datetime, timedelta
 #                        'Dimensions': [{'Name':'ClusterName','Value':'skartta'}],
 #                        'StartTime': datetime.utcnow() - timedelta(minutes=10),
 #                        'EndTime': datetime.now() ,
-#                        'Period': 1200,
+#                        'Period': 600,
 #                        'Statistics':['Average'],
 #                        'Unit':'Percent'},
 #            'statistics': 'Average',
-#            'unit': 'Percent'}]
+#            'unit': 'Percent'},
+#           {'name': 'ELB avg. response time',
+#            'request': {'Namespace':'AWS/ApplicationELB',
+#                        'MetricName':'TargetResponseTime',
+#                        'Dimensions': [{'Name':'LoadBalancer','Value':'app/skart-Skart-ZQXTM8Q3E7MY/deb95921b4d7b0f8'}],
+#                        'StartTime': datetime.utcnow() - timedelta(minutes=10),
+#                        'EndTime': datetime.now() ,
+#                        'Period': 600,
+#                        'Statistics':['Average'],
+#                        'Unit':'Seconds'},
+#            'statistics': 'Average',
+#            'unit': 'Seconds'}]
 
 metrics= []
 
@@ -54,6 +72,25 @@ def get_alarms():
     return (list(map(filter_alarm_keys, alarms['MetricAlarms'])))
 
 
+def filter_not_alarm(d):
+    if d['State'] == "ALARM":
+        return True
+    return False
+
+def map_alarm_history(d):
+    return {'AlarmName': d['AlarmName'],
+            'Timestamp': d['Timestamp'],
+            'State': json.loads(d['HistoryData'])["newState"]['stateValue'],
+            'HistoryData': json.loads(d['HistoryData'])}
+
+def get_alarms_history():
+    client = boto3.client('cloudwatch')
+    start=datetime.utcnow() - timedelta(hours=24)
+    end=datetime.utcnow()
+    response = client.describe_alarm_history(StartDate=start,EndDate=end,HistoryItemType='StateUpdate')
+    return (list(filter (filter_not_alarm, (map(map_alarm_history, response['AlarmHistoryItems'])))))
+
+
 def get_pipeline_current_status(pipeline):
     client = boto3.client('codepipeline')
     res = client.get_pipeline_state(name=pipeline)
@@ -77,5 +114,6 @@ def status(event, context):
     result = {
         "alarms":get_alarms(),
         "pipelines" : get_pipelines(),
-        "metrics" : get_metrics()}
-    return {"body": json.dumps(result)}
+        "metrics" : get_metrics(),
+        "alarms_history": get_alarms_history()}
+    return {"body": json.dumps(result, default=json_serial)}
