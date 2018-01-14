@@ -9,6 +9,8 @@ def json_serial(obj):
         return obj.isoformat()
     raise TypeError ("Type %s not serializable" % type(obj))
 
+metrics= []
+
 # metrics= [{'name': 'RDS CPU Utilization',
 #            'request': {'Namespace':'AWS/RDS',
 #                         'MetricName':'CPUUtilization',
@@ -42,7 +44,7 @@ def json_serial(obj):
 #            'statistics': 'Average',
 #            'unit': 'Seconds'}]
 
-metrics= []
+
 
 def get_metric(m):
     client = boto3.client('cloudwatch')
@@ -91,17 +93,36 @@ def get_alarms_history():
     return (list(filter (filter_not_alarm, (map(map_alarm_history, response['AlarmHistoryItems'])))))
 
 
+def get_commit_info(pipeline_status):
+    # CodeCommit may fail sometimes so lets catch it
+    try:
+        code_commit = boto3.client('codecommit')
+        artifact_url = pipeline_status['pipelineExecution']['artifactRevisions'][0]['revisionUrl']
+        commit_id = artifact_url.split('/')[-1]
+        git_repository = artifact_url.split('/')[-3]
+        commit_info = code_commit.get_commit(repositoryName=git_repository, commitId=commit_id)
+        author = commit_info['commit']['committer']['name']
+        commit_message = commit_info['commit']['message']
+        return {"commitAuthor": author,
+                "commitMessage:": commit_message}
+    except Exception:
+        return {"commitAuthor": "",
+                "commitMessage": ""}
+
+        
 def get_pipeline_current_status(pipeline):
     client = boto3.client('codepipeline')
     res = client.get_pipeline_state(name=pipeline)
     execution_id =  res['stageStates'][0]['latestExecution']['pipelineExecutionId']
     status = client.get_pipeline_execution(pipelineName=pipeline,pipelineExecutionId=execution_id)
-    return status['pipelineExecution']['status']
+    commit_info = get_commit_info(status)
+    pipeline_status = {"currentStatus": status['pipelineExecution']['status']}
+    return {**pipeline_status, **commit_info}
 
 
 def map_statuses(d):
     return {'name': d['name'],
-            'currentStatus': get_pipeline_current_status(d['name'])}
+            **get_pipeline_current_status(d['name'])}
 
 
 def get_pipelines():

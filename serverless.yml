@@ -26,6 +26,10 @@ provider:
       Resource: "*"
     - Effect: "Allow"
       Action:
+        - "codecommit:get*"
+      Resource: "*"
+    - Effect: "Allow"
+      Action:
         - "cloudwatch:GetMetricStatistics"
       Resource: "*"
 
