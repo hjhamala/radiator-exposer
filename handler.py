@@ -104,12 +104,20 @@ def get_commit_info(pipeline_status):
         author = commit_info['commit']['committer']['name']
         commit_message = commit_info['commit']['message']
         return {"commitAuthor": author,
-                "commitMessage:": commit_message}
+                "commitMessage": commit_message}
     except Exception:
         return {"commitAuthor": "",
                 "commitMessage": ""}
 
-        
+
+def map_stages(d):
+    if 'latestExecution' in d:
+        return {"name": d['stageName'],
+                "status": d['latestExecution']['status']}
+    else:
+        return {"name": d['stageName'],
+                "status": "not-runned-yet"}
+
 def get_pipeline_current_status(pipeline):
     client = boto3.client('codepipeline')
     res = client.get_pipeline_state(name=pipeline)
@@ -117,7 +125,10 @@ def get_pipeline_current_status(pipeline):
     status = client.get_pipeline_execution(pipelineName=pipeline,pipelineExecutionId=execution_id)
     commit_info = get_commit_info(status)
     pipeline_status = {"currentStatus": status['pipelineExecution']['status']}
-    return {**pipeline_status, **commit_info}
+    stages = list(map(map_stages, res['stageStates']))
+    return {"stages": stages,
+            **pipeline_status,
+            **commit_info}
 
 
 def map_statuses(d):
