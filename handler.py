@@ -1,6 +1,7 @@
 import boto3
 import json
 from datetime import date,datetime, timedelta
+from functools import partial
 
 def json_serial(obj):
     """JSON serializer for objects not serializable by default json code"""
@@ -44,6 +45,13 @@ metrics= []
 #            'statistics': 'Average',
 #            'unit': 'Seconds'}]
 
+def fetch_paginated(fun, data_key, continuation_key="NextToken"):
+    resp = fun()
+    ret = resp.get(data_key, [])
+    while resp.get(continuation_key):
+        resp = fun(**{continuation_key: resp[continuation_key]})
+        ret.extend(resp.get(data_key, []))
+    return ret
 
 
 def get_metric(m):
@@ -70,8 +78,8 @@ def filter_alarm_keys(d):
 
 def get_alarms():
     client = boto3.client('cloudwatch')
-    alarms = client.describe_alarms()
-    return (list(map(filter_alarm_keys, alarms['MetricAlarms'])))
+    alarms = fetch_paginated(client.describe_alarms, "MetricAlarms")
+    return (list(map(filter_alarm_keys, alarms)))
 
 
 def filter_not_alarm(d):
@@ -89,8 +97,12 @@ def get_alarms_history():
     client = boto3.client('cloudwatch')
     start=datetime.utcnow() - timedelta(hours=24)
     end=datetime.utcnow()
-    response = client.describe_alarm_history(StartDate=start,EndDate=end,HistoryItemType='StateUpdate')
-    return (list(filter (filter_not_alarm, (map(map_alarm_history, response['AlarmHistoryItems'])))))
+    response = fetch_paginated(partial(client.describe_alarm_history,
+                                       StartDate=start,
+                                       EndDate=end,
+                                       HistoryItemType='StateUpdate'),
+                               "AlarmHistoryItems")
+    return (list(filter (filter_not_alarm, (map(map_alarm_history, response)))))
 
 
 def get_commit_info(pipeline_status):
@@ -138,7 +150,7 @@ def map_statuses(d):
 
 def get_pipelines():
     client = boto3.client('codepipeline')
-    pipelines = client.list_pipelines()["pipelines"]
+    pipelines = fetch_paginated(client.list_pipelines, "pipelines", continuation_key="nextToken")
     return (list(map(map_statuses, pipelines)))
 
 
